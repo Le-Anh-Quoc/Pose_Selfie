@@ -142,9 +142,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: const Row(
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
                     IconWidget(icon: Icons.arrow_back_ios),

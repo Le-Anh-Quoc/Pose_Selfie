@@ -1,3 +1,7 @@
+// ignore_for_file: deprecated_member_use
+
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:pose_selfie_app/src/common_widgets/gradient_border.dart';
@@ -40,7 +44,8 @@ class DetailCategoryPreview extends GetView<DetailCategoryController> {
                 ),
               );
             }
-            if (controller.error.value == 'Error fetching poses for category $categoryId') {
+            if (controller.error.value ==
+                'Error fetching poses for category $categoryId') {
               return const Center(
                 child: Padding(
                   padding: EdgeInsets.all(24.0),
@@ -55,7 +60,6 @@ class DetailCategoryPreview extends GetView<DetailCategoryController> {
                           color: Colors.white,
                         ),
                       ),
-
                     ],
                   ),
                 ),
@@ -67,17 +71,22 @@ class DetailCategoryPreview extends GetView<DetailCategoryController> {
               itemCount: controller.listPose.length,
               itemBuilder: (context, index) {
                 final pose = controller.listPose[index];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                  child: GradientBorderContainer(
-                    child: Container(
-                      width: 130,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(32),
-                        color: Colors.grey[800],
-                        image: DecorationImage(
-                          image: NetworkImage(pose.image),
-                          fit: BoxFit.cover,
+                return GestureDetector(
+                  onTap: () {
+                    _showImagePreview(context, pose.image);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: GradientBorderContainer(
+                      child: Container(
+                        width: 130,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(32),
+                          color: Colors.grey[800],
+                          image: DecorationImage(
+                            image: NetworkImage(pose.image),
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                     ),
@@ -88,6 +97,51 @@ class DetailCategoryPreview extends GetView<DetailCategoryController> {
           }),
         ),
       ],
+    );
+  }
+
+  void _showImagePreview(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (context) {
+        return Center(
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: Container(
+                    color: Colors.transparent,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  Navigator.of(context).pop();
+                },
+                child: GradientBorderContainer(
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.9,
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(32),
+                      image: DecorationImage(
+                        image: NetworkImage(imageUrl),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
