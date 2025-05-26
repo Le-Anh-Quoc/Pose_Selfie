@@ -75,14 +75,14 @@ class CameraScreen extends GetView<CameraScreenController> {
                   child: CircularProgressIndicator(color: Colors.white),
                 );
               }
-              if (controller.detailCategoryController.listPose.isEmpty ||
+              if (controller.cameraScreenPoseList.isEmpty ||
                   controller.selectedPoseIndex.value >=
-                      controller.detailCategoryController.listPose.length) {
+                      controller.cameraScreenPoseList.length) {
                 return const SizedBox();
               }
 
-              final selectedPose = controller.detailCategoryController
-                  .listPose[controller.selectedPoseIndex.value];
+              final selectedPose = controller
+                  .cameraScreenPoseList[controller.selectedPoseIndex.value];
               if (selectedPose.contourWhite != null &&
                   selectedPose.contourWhite!.isNotEmpty) {
                 return Center(
@@ -137,6 +137,36 @@ class CameraScreen extends GetView<CameraScreenController> {
                 _buildBottomControls(),
               ],
             ),
+
+            // Video recording timer overlay
+            Obx(() {
+              if (controller.isRecording.value) {
+                return Positioned(
+                  top: 40,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        controller.formatRecordingDuration(),
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+              return const SizedBox();
+            }),
           ],
         ),
       );
@@ -197,7 +227,7 @@ class CameraScreen extends GetView<CameraScreenController> {
       height: 100,
       child: Obx(
         () {
-          final poses = controller.detailCategoryController.listPose;
+          final poses = controller.cameraScreenPoseList;
           if (poses.isEmpty) {
             return const Center(
               child: Text(
@@ -218,12 +248,18 @@ class CameraScreen extends GetView<CameraScreenController> {
   }
 
   Widget _buildFilterItem(int index) {
-    final pose = controller.detailCategoryController.listPose[index];
+    final pose = controller.cameraScreenPoseList[index];
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: GestureDetector(
-        onTap: () => controller.selectFilter(index),
+        onTap: () {
+          if (controller.isLoadingContour.value) {
+            return;
+          } else {
+            controller.selectFilter(index);
+          }
+        },
         child: Obx(
           () => Stack(
             children: [
@@ -251,19 +287,14 @@ class CameraScreen extends GetView<CameraScreenController> {
                   ),
                 ),
               ),
-          
               // Nút close
               Positioned(
                 top: 4,
                 right: 4,
                 child: GestureDetector(
                   onTap: () => {
-                    controller.detailCategoryController.removePose(index),
-                    controller.detailCategoryController.loadContourForPose(
-                        controller.detailCategoryController.listPose[0]),
-                    controller.selectedPoseIndex.value = 0,
-                    controller.selectedFilterIndex.value = 0,
-                  }, // thay bằng hàm bạn muốn
+                    controller.removeCameraScreenPose(index),
+                  },
                   child: Container(
                     padding: const EdgeInsets.all(2),
                     decoration: const BoxDecoration(
@@ -291,16 +322,19 @@ class CameraScreen extends GetView<CameraScreenController> {
       children: [
         GestureDetector(
             onTap: () {
-              controller.toggleFlashlight();
+              controller.toggleFlash();
             },
             child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.3),
-                  shape: BoxShape.circle,
-                ),
-                child: AppIcon.both)),
-        Obx(() => _buildCaptureButton()),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: controller.isFlashOn.value
+                    ? AppColor.yellowButton.withOpacity(0.6)
+                    : Colors.grey.withOpacity(0.3),
+                shape: BoxShape.circle,
+              ),
+              child: AppIcon.both,
+            )),
+        _buildCaptureButton(),
         GestureDetector(
             onTap: () => controller.switchCamera(),
             child: Container(
@@ -315,45 +349,73 @@ class CameraScreen extends GetView<CameraScreenController> {
   }
 
   Widget _buildCaptureButton() {
-    return GestureDetector(
-      onTap: controller.isVideoMode.value
-          ? (controller.isRecording.value
-              ? controller.stopVideoRecording
-              : controller.startVideoRecording)
-          : controller.takePicture,
-      child: Container(
-        width: 70,
-        height: 70,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.grey.withOpacity(0.5), width: 4),
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            shape: controller.isRecording.value
-                ? BoxShape.rectangle
-                : BoxShape.circle,
-            borderRadius:
-                controller.isRecording.value ? BorderRadius.circular(32) : null,
-            color: controller.isVideoMode.value
-                ? (controller.isRecording.value ? Colors.white : Colors.red)
-                : Colors.white,
-          ),
-          child: controller.isRecording.value
-              ? Center(
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+    return Obx(() {
+      return GestureDetector(
+        onTap: controller.isVideoMode.value
+            ? (controller.isRecording.value
+                ? controller.stopVideoRecording
+                : controller.startVideoRecording)
+            : controller.takePicture,
+        child: SizedBox(
+          width: 70,
+          height: 70,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Viền progress đỏ
+              if (controller.isRecording.value && controller.isVideoMode.value)
+                SizedBox(
+                  width: 70,
+                  height: 70,
+                  child: CustomPaint(
+                    painter:
+                        _ProgressCirclePainter(controller.videoProgress.value),
                   ),
-                )
-              : null,
+                ),
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: controller.isRecording.value
+                          ? Colors.transparent
+                          : Colors.grey.withOpacity(0.5),
+                      width: 4),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: controller.isRecording.value
+                        ? BoxShape.rectangle
+                        : BoxShape.circle,
+                    borderRadius: controller.isRecording.value
+                        ? BorderRadius.circular(32)
+                        : null,
+                    color: controller.isVideoMode.value
+                        ? (controller.isRecording.value
+                            ? Colors.white
+                            : Colors.red)
+                        : Colors.white,
+                  ),
+                  child: controller.isRecording.value
+                      ? Center(
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildModeToggle() {
@@ -391,5 +453,28 @@ class CameraScreen extends GetView<CameraScreenController> {
         ],
       ),
     );
+  }
+}
+
+// Custom painter cho viền progress đỏ
+class _ProgressCirclePainter extends CustomPainter {
+  final double progress; // 0.0 - 1.0
+  _ProgressCirclePainter(this.progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final paint = Paint()
+      ..color = Colors.red
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5;
+    final startAngle = -3.14159 / 2;
+    final sweepAngle = 2 * 3.14159 * progress;
+    canvas.drawArc(rect.deflate(3), startAngle, sweepAngle, false, paint);
+  }
+
+  @override
+  bool shouldRepaint(_ProgressCirclePainter oldDelegate) {
+    return oldDelegate.progress != progress;
   }
 }

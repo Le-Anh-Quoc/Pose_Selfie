@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:pose_selfie_app/src/constants/app_constants.dart';
 import 'package:pose_selfie_app/src/features/home/model/category_model.dart';
 import 'package:pose_selfie_app/src/features/home/ui/camera/camera_binding.dart';
@@ -18,6 +19,29 @@ class DetailCategoryScreen extends GetView<DetailCategoryController> {
 
   Future<void> _onStartPressed(BuildContext context) async {
     try {
+      // Kiểm tra quyền camera và microphone trước khi chuyển trang
+      PermissionStatus cameraStatus = await Permission.camera.status;
+      PermissionStatus micStatus = await Permission.microphone.status;
+      if (!cameraStatus.isGranted || !micStatus.isGranted) {
+        // Nếu chưa có quyền, yêu cầu quyền
+        Map<Permission, PermissionStatus> statuses = await [
+          Permission.camera,
+          Permission.microphone
+        ].request();
+        if (!statuses[Permission.camera]!.isGranted || !statuses[Permission.microphone]!.isGranted) {
+          // Hiện thông báo lỗi và không chuyển trang
+          Get.snackbar(
+            'Error',
+            'You need to grant camera and microphone access to use this feature. Please go to settings and try again.',
+            snackPosition: SnackPosition.TOP,
+            backgroundColor: Colors.red.withOpacity(0.7),
+            colorText: Colors.white,
+            duration: const Duration(seconds: 2),
+            margin: const EdgeInsets.only(top: 10, left: 10, right: 10),
+          );
+          return;
+        }
+      }
       if (controller.listPose.isNotEmpty) {
         await controller.loadContourForPose(controller.listPose[0]);
       }
@@ -29,9 +53,7 @@ class DetailCategoryScreen extends GetView<DetailCategoryController> {
         );
       }
     } catch (e) {
-      // handle error if needed
-    } finally {
-      //Future.microtask(() => controller.isProcessing.value = false);
+      print('Error in DetailCategoryScreen: $e');
     }
   }
 

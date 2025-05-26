@@ -1,5 +1,6 @@
 // ignore_for_file: depend_on_referenced_packages, deprecated_member_use, avoid_print
 
+import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -13,6 +14,7 @@ import 'package:pose_selfie_app/src/features/home/ui/detail_category/detail_cate
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pose_selfie_app/src/features/home/ui/camera/layouts/tutorial_dialog.dart';
 import 'package:torch_light/torch_light.dart';
+import 'package:pose_selfie_app/src/features/home/model/pose_model.dart';
 
 class CameraScreenController extends GetxController
     with WidgetsBindingObserver {
@@ -33,6 +35,18 @@ class CameraScreenController extends GetxController
   final selectedPoseIndex = 0.obs;
   final isLoadingContour = false.obs;
   final isFlashOn = false.obs;
+  final isRemovingPose = false.obs;
+  final isSavingPicture = false.obs;
+  final isSavingVideo = false.obs;
+  final isVideoActionProcessing = false.obs;
+
+  // List pose riêng cho CameraScreen
+  final RxList<PoseModel> cameraScreenPoseList = <PoseModel>[].obs;
+
+  DateTime? _lastRemoveErrorTime;
+
+  final RxInt recordingDuration = 0.obs;
+  final RxDouble videoProgress = 0.0.obs; // Tiến trình quay video (0-1)
 
   @override
   void onInit() {
@@ -65,6 +79,8 @@ class CameraScreenController extends GetxController
           .loadContourForPose(detailCategoryController.listPose[0]);
     }
 
+    initializeCameraScreenPoseList();
+
     await initCamera();
   }
 
@@ -86,28 +102,110 @@ class CameraScreenController extends GetxController
     return false;
   }
 
+  // Future<void> initCamera() async {
+  //   //Kiểm tra quyền camera và microphone
+  //   PermissionStatus status = await Permission.camera.status;
+  //   if (status.isDenied) {
+  //     PermissionStatus newStatus = await Permission.camera.request();
+  //     if (newStatus.isGranted) {
+  //       await reloadCamera();
+  //     } else if (newStatus.isPermanentlyDenied) {
+  //       // Người dùng từ chối vĩnh viễn – hiển thị hộp thoại điều hướng đến cài đặt
+  //       print('Điều hướng đến cài đặt khi bị từ chối');
+  //       Get.back();
+  //     }
+  //   } else if (status.isGranted) {
+  //     // Nếu đã có quyền, kiểm tra và khởi tạo camera
+  //     await reloadCamera();
+  //   } else if (status.isPermanentlyDenied) {
+  //     Get.back();
+  //     showErrorNotification(
+  //       'Camera permission is permanently denied. Please enable it in settings.',
+  //     );
+  //   }
+  // }
+
+  // Future<void> reloadCamera() async {
+  //   try {
+  //     cameras = await availableCameras();
+  //     // Ưu tiên camera sau (back) nếu có
+  //     final backCamera = cameras.firstWhere(
+  //       (camera) => camera.lensDirection == CameraLensDirection.back,
+  //       orElse: () => cameras.first,
+  //     );
+  //     final newController = CameraController(
+  //       backCamera,
+  //       ResolutionPreset.high,
+  //       enableAudio: true,
+  //       imageFormatGroup: ImageFormatGroup.jpeg,
+  //     );
+  //     await newController.initialize();
+  //     cameraController.value = newController;
+  //     isInitialized.value = true;
+  //   } catch (e) {
+  //     error.value = 'Failed to initialize camera:  ${e.toString()}';
+  //     isInitialized.value = false;
+  //   }
+  // }
+
   Future<void> initCamera() async {
+    // if (_isInitializing) return;
+    // _isInitializing = true;
+
+    // bool hasPermission = await _checkAndRequestPermissions();
+    // if (!hasPermission) {
+    //   Get.back();
+    //   return;
+    // }
+
     try {
       cameras = await availableCameras();
-      // Ưu tiên camera sau (back) nếu có
       final backCamera = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
+
       final newController = CameraController(
         backCamera,
         ResolutionPreset.high,
         enableAudio: true,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
+
       await newController.initialize();
       cameraController.value = newController;
       isInitialized.value = true;
     } catch (e) {
-      error.value = 'Failed to initialize camera: ${e.toString()}';
+      error.value = 'Failed to initialize camera: ${e.toString()}';
       isInitialized.value = false;
     }
   }
+
+  // Future<bool> _checkAndRequestPermissions() async {
+  //   PermissionStatus status = await Permission.camera.status;
+
+  //   if (status.isGranted) {
+  //     return true;
+  //   }
+
+  //   if (status.isDenied) {
+  //     PermissionStatus newStatus = await Permission.camera.request();
+  //     if (newStatus.isGranted) {
+  //       return true;
+  //     } else if (newStatus.isPermanentlyDenied) {
+  //       return false;
+  //     } else {
+  //       return false; // Trường hợp bị từ chối lại nhưng không vĩnh viễn
+  //     }
+  //   }
+
+  //   if (status.isPermanentlyDenied) {
+  //     return false;
+  //   }
+
+  //   // Dự phòng cho các trạng thái khác (hiếm gặp)
+  //   return false;
+  // }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -181,9 +279,18 @@ class CameraScreenController extends GetxController
 
   Future<void> takePicture() async {
     if (cameraController.value == null ||
-        !cameraController.value!.value.isInitialized) {
+        !cameraController.value!.value.isInitialized ||
+        isSavingPicture.value) {
       return;
     }
+
+    isSavingPicture.value = true;
+    bool isFlashAvailable = isFlashOn.value;
+
+    // Đặt chế độ flash theo ý muốn, không để auto
+    await cameraController.value!.setFlashMode(
+      isFlashAvailable ? FlashMode.torch : FlashMode.off,
+    );
 
     try {
       final photoDir = await getMediaDirectory('photos');
@@ -193,24 +300,35 @@ class CameraScreenController extends GetxController
       final file = await cameraController.value!.takePicture();
       await file.saveTo(path);
 
+      await cameraController.value!.setFlashMode(FlashMode.off);
+
       showSuccessNotification('Photo saved successfully!');
     } catch (e) {
-      showErrorNotification('Failed to take picture: ${e.toString()}');
+      showErrorNotification('Failed to take picture: [${e.toString()}');
+    } finally {
+      isSavingPicture.value = false;
     }
   }
 
   Future<void> startVideoRecording() async {
     if (cameraController.value == null ||
-        cameraController.value!.value.isRecordingVideo) {
+        cameraController.value!.value.isRecordingVideo ||
+        isSavingVideo.value ||
+        isRecording.value ||
+        isVideoActionProcessing.value) {
       return;
     }
-
+    isVideoActionProcessing.value = true;
     try {
       countdown.value = 3;
-
       await cameraController.value!.startVideoRecording();
+      await cameraController.value!.setFlashMode(
+        isFlashOn.value ? FlashMode.torch : FlashMode.off,
+      );
       isRecording.value = true;
-
+      recordingDuration.value = 0;
+      videoProgress.value = 0.0; // reset progress
+      _startRecordingTimer();
       for (int i = 3; i >= 1; i--) {
         await Future.delayed(const Duration(seconds: 1));
         countdown.value = i - 1;
@@ -218,16 +336,42 @@ class CameraScreenController extends GetxController
     } catch (e) {
       countdown.value = -1;
       isRecording.value = false;
-      showErrorNotification('Failed to start recording: ${e.toString()}');
+      videoProgress.value = 0.0;
+      showErrorNotification('Failed to start recording:  ${e.toString()}');
+    } finally {
+      isVideoActionProcessing.value = false;
     }
   }
 
+  void _startRecordingTimer() {
+    _recordingTimer?.cancel();
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!isRecording.value) {
+        timer.cancel();
+      } else {
+        recordingDuration.value++;
+        // Cập nhật tiến trình (giả sử tối đa 60s)
+        videoProgress.value = (recordingDuration.value) / 60.0;
+        if (videoProgress.value >= 1.0) {
+          videoProgress.value = 1.0;
+          stopVideoRecording();
+        }
+      }
+    });
+  }
+
+  Timer? _recordingTimer;
+
   Future<void> stopVideoRecording() async {
     if (cameraController.value == null ||
-        !cameraController.value!.value.isRecordingVideo) {
+        !cameraController.value!.value.isRecordingVideo ||
+        isSavingVideo.value ||
+        !isRecording.value ||
+        isVideoActionProcessing.value) {
       return;
     }
-
+    isVideoActionProcessing.value = true;
+    isSavingVideo.value = true;
     try {
       final videoDir = await getMediaDirectory('videos');
       final videoFile = await cameraController.value!.stopVideoRecording();
@@ -236,11 +380,20 @@ class CameraScreenController extends GetxController
 
       await videoFile.saveTo(savedFile.path);
       isRecording.value = false;
-
+      _recordingTimer?.cancel();
+      videoProgress.value = 0.0;
+      await cameraController.value!.setFlashMode(
+        FlashMode.off,
+      );
       showSuccessNotification('Video saved successfully!');
     } catch (e) {
       isRecording.value = false;
+      _recordingTimer?.cancel();
+      videoProgress.value = 0.0;
       showErrorNotification('Failed to stop recording: ${e.toString()}');
+    } finally {
+      isSavingVideo.value = false;
+      isVideoActionProcessing.value = false;
     }
   }
 
@@ -280,13 +433,28 @@ class CameraScreenController extends GetxController
     update();
   }
 
+  void toggleFlash() async {
+    if (cameraController.value == null ||
+        !cameraController.value!.value.isInitialized) {
+      return;
+    }
+
+    isFlashOn.value = !isFlashOn.value;
+    // Cho phép bật/tắt flash cả khi đang quay video
+    if (isRecording.value) {
+      await cameraController.value!.setFlashMode(
+        isFlashOn.value ? FlashMode.torch : FlashMode.off,
+      );
+    }
+  }
+
   void selectFilter(int index) async {
     selectedFilterIndex.value = index;
     selectedPoseIndex.value = index;
     isLoadingContour.value = true;
     // Load contour when filter is selected
     await detailCategoryController
-        .loadContourForPose(detailCategoryController.listPose[index]);
+        .loadContourForPose(cameraScreenPoseList[index]);
     isLoadingContour.value = false;
   }
 
@@ -303,19 +471,40 @@ class CameraScreenController extends GetxController
     }
   }
 
-  Future<void> toggleFlashlight() async {
-    try {
-      if (isFlashOn.value) {
-        await TorchLight.disableTorch();
+  void initializeCameraScreenPoseList() {
+    cameraScreenPoseList.assignAll(detailCategoryController.listPose.map((e) =>
+        PoseModel(id: e.id, image: e.image, contourWhite: e.contourWhite)));
+  }
 
-        isFlashOn.value = false;
-      } else {
-        await TorchLight.enableTorch();
-        isFlashOn.value = true;
+  void removeCameraScreenPose(int index) async {
+    if (isRemovingPose.value || isLoadingContour.value) {
+      // Chỉ hiện thông báo lỗi nếu chưa hiện trong 1 giây gần nhất
+      final now = DateTime.now();
+      if (_lastRemoveErrorTime == null ||
+          now.difference(_lastRemoveErrorTime!) > const Duration(seconds: 1)) {
+        showErrorNotification('Please wait until the current pose is loaded.');
+        _lastRemoveErrorTime = now;
       }
-    } on Exception catch (e) {
-      print('Flash toggle error: $e');
+      return;
     }
+    if (cameraScreenPoseList.isNotEmpty &&
+        index < cameraScreenPoseList.length) {
+      isRemovingPose.value = true;
+      cameraScreenPoseList.removeAt(index);
+      if (cameraScreenPoseList.isNotEmpty) {
+        int newIndex = (index > 0) ? index : 0;
+        selectFilter(newIndex);
+        await detailCategoryController
+            .loadContourForPose(cameraScreenPoseList[newIndex]);
+      }
+      isRemovingPose.value = false;
+    }
+  }
+
+  Future<void> loadContourForCameraScreenPose(PoseModel pose) async {
+    isLoadingContour.value = true;
+    await detailCategoryController.loadContourForPose(pose);
+    isLoadingContour.value = false;
   }
 
   @override
@@ -325,7 +514,18 @@ class CameraScreenController extends GetxController
     if (isRecording.value && cameraController.value != null) {
       await stopVideoRecording();
     }
-    disposeCamera();
+    if (isFlashOn.value) {
+      await TorchLight.disableTorch();
+      isFlashOn.value = false;
+    }
+    await disposeCamera();
     super.onClose();
+  }
+
+  String formatRecordingDuration() {
+    final int seconds = recordingDuration.value;
+    final int min = seconds ~/ 60;
+    final int sec = seconds % 60;
+    return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 }
