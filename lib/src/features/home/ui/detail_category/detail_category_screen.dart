@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use, avoid_print
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -12,6 +14,9 @@ import 'package:pose_selfie_app/src/features/home/ui/detail_category/layouts/det
 class DetailCategoryScreen extends GetView<DetailCategoryController> {
   final CategoryModel poseItem;
 
+  // Thêm biến đếm số lần từ chối quyền
+  static int _permissionDeniedCount = 0;
+
   const DetailCategoryScreen({super.key, required this.poseItem});
 
   @override
@@ -19,28 +24,64 @@ class DetailCategoryScreen extends GetView<DetailCategoryController> {
 
   Future<void> _onStartPressed(BuildContext context) async {
     try {
-      // Kiểm tra quyền camera và microphone trước khi chuyển trang
+      // Phải luôn kiểm tra quyền ở đầu hàm
       PermissionStatus cameraStatus = await Permission.camera.status;
       PermissionStatus micStatus = await Permission.microphone.status;
-      if (!cameraStatus.isGranted || !micStatus.isGranted) {
-        // Nếu chưa có quyền, yêu cầu quyền
-        Map<Permission, PermissionStatus> statuses = await [
-          Permission.camera,
-          Permission.microphone
-        ].request();
-        if (!statuses[Permission.camera]!.isGranted || !statuses[Permission.microphone]!.isGranted) {
-          // Hiện thông báo lỗi và không chuyển trang
-          Get.snackbar(
-            'Error',
-            'You need to grant camera and microphone access to use this feature. Please go to settings and try again.',
-            snackPosition: SnackPosition.TOP,
-            backgroundColor: Colors.red.withOpacity(0.7),
-            colorText: Colors.white,
-            duration: const Duration(seconds: 2),
-            margin: const EdgeInsets.only(top: 10, left: 10, right: 10),
-          );
-          return;
+      if (cameraStatus.isGranted && micStatus.isGranted) {
+        _permissionDeniedCount = 0;
+        if (controller.listPose.isNotEmpty) {
+          await controller.loadContourForPose(controller.listPose[0]);
         }
+        if (context.mounted) {
+          await Get.to(
+            () => CameraScreen(categoryId: poseItem.id),
+            arguments: {'categoryId': poseItem.id},
+            binding: CameraScreenBinding(),
+          );
+        }
+        return;
+      }
+      // Nếu đã từ chối 2 lần, chuyển hướng đến cài đặt
+      if (_permissionDeniedCount >= 2) {
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Instruct', style: TextStyle(fontWeight: FontWeight.bold)),
+              content: const Text(
+                  'Please go to "Permissions" in the app settings then enable Camera and Microphone permissions to use this feature.'),
+              actions: [
+                TextButton(
+                  onPressed: () async => await openAppSettings(),
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+      // Nếu chưa có quyền, yêu cầu quyền
+      Map<Permission, PermissionStatus> statuses =
+          await [Permission.camera, Permission.microphone].request();
+      if (!statuses[Permission.camera]!.isGranted ||
+          !statuses[Permission.microphone]!.isGranted) {
+        // Tăng biến đếm nếu bị từ chối
+        _permissionDeniedCount++;
+        // Hiện thông báo lỗi và không chuyển trang
+        Get.snackbar(
+          'Error',
+          'You need to grant camera and microphone access to use this feature.',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.red.withOpacity(0.7),
+          colorText: Colors.white,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.only(top: 10, left: 10, right: 10),
+        );
+        return;
+      } else {
+        // Nếu đã cấp quyền, reset biến đếm
+        _permissionDeniedCount = 0;
       }
       if (controller.listPose.isNotEmpty) {
         await controller.loadContourForPose(controller.listPose[0]);
@@ -75,13 +116,13 @@ class DetailCategoryScreen extends GetView<DetailCategoryController> {
                 child: Column(
                   children: [
                     Obx(() => ElevatedButton(
-                          onPressed:
-                              (controller.isLoading.value)
-                                  ? null
-                                  : () => _onStartPressed(context),
+                          onPressed: (controller.isLoading.value)
+                              ? null
+                              : () => _onStartPressed(context),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColor.yellowButton,
-                            disabledBackgroundColor: Colors.yellow, // Keep yellow color when disabled
+                            disabledBackgroundColor: Colors
+                                .yellow, // Keep yellow color when disabled
                             padding: const EdgeInsets.symmetric(
                               horizontal: 56,
                               vertical: 20,

@@ -468,7 +468,7 @@ class _ProgressCirclePainter extends CustomPainter {
       ..color = Colors.red
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5;
-    final startAngle = -3.14159 / 2;
+    const startAngle = -3.14159 / 2;
     final sweepAngle = 2 * 3.14159 * progress;
     canvas.drawArc(rect.deflate(3), startAngle, sweepAngle, false, paint);
   }

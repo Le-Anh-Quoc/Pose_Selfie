@@ -192,32 +192,17 @@ class HomeScreen extends GetView<HomeController> {
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
           ),
-          itemCount: categories.length + 1,
+          itemCount: categories.length,
           itemBuilder: (context, index) {
-            if (index == 3) {
-              return _buildAdCard();
-            }
-            final itemIndex = index > 3 ? index - 1 : index;
-            final poseItem = categories[itemIndex];
+            // if (index == 3) {
+            //   return _buildAdCard();
+            // }
+            // final itemIndex = index > 3 ? index - 1 : index;
+            final poseItem = categories[index];
             return CategoryWidget(poseItem: poseItem);
           },
         );
       }),
-    );
-  }
-
-  Widget _buildAdCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        borderRadius: BorderRadius.circular(32),
-      ),
-      child: const Center(
-        child: Text(
-          'Ads',
-          style: TextStyle(color: AppColor.black, fontSize: 20),
-        ),
-      ),
     );
   }
 }
